@@ -4,11 +4,12 @@ import { usersRouter } from './routes/users';
 import { productsRouter } from './routes/products';
 import { categoriesRouter } from './routes/categories';
 import { log } from './middlelware/request-log';
+import { AuthBailOut } from './middlelware/auth';
 
 const app = express();
 app.use(express.json());
 app.use(cors());
-app.use(log);
+app.use(log, AuthBailOut);
 
 app.all('*', (req, res, next) => {
   console.log('Request received', req.url);
