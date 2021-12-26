@@ -12,10 +12,6 @@ app.use(express.json());
 app.use(cors());
 
 app.use(expresswinston.logger(loggerOptions()));
-app.all('*', (req, res, next) => {
-  console.log('Request received', req.url);
-  next();
-});
 
 app.use('/api/users', usersRouter);
 app.use('/api/products', productsRouter);

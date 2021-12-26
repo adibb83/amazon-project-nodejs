@@ -12,3 +12,7 @@ export function getUsersAsync(): Promise<UserDto[]> {
 export function getUserByIdAsync(id: string): Promise<UserDto | undefined> {
   return Promise.resolve(getUsers().find((user) => user.id === id));
 }
+
+export function getUserIndexByIdAsync(id: string): Promise<number> {
+  return Promise.resolve(getUsers().findIndex((user) => user.id === id));
+}

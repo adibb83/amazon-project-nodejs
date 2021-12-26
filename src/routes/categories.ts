@@ -1,74 +1,113 @@
 import { Response, Request, NextFunction, Router } from 'express';
 import { uuid } from '../utils/uuid';
-import { CategoriesData, CategoryDto } from '../assets/categories';
-import { productsData, productDto } from '../assets/products';
+import { CategoryDto } from '../assets/categories';
+import { wrapAsyncAndSend } from '../utils/async-routes';
+import {
+  getCategoriesAsync,
+  getCategories,
+  getCategoryByIdAsync,
+  getCategoryIndexByIdAsync,
+  getProductsByCategoryId,
+} from '../store/category-store';
+import { checkValidId, checkValidName } from '../validations/common';
+import { productDto } from '../assets/products';
 
-const categories: CategoryDto[] = CategoriesData;
-const products: productDto[] = productsData;
+const CATEGORIES: CategoryDto[] = getCategories();
 const categoriesRouter = Router();
 
-const resolvecategoryByIdHandler = (req: Request, res: Response, next: NextFunction): void => {
+const resolveProductsByCategoryHandler = async (req: Request, res: Response, next: NextFunction) => {
   const categoryId = req.params.id;
-  const categoryIndex = categories.findIndex((u) => u.id === categoryId);
-
-  if (!!categoryId || categoryId.length !== 36) {
+  if (!checkValidId(categoryId)) {
     res.sendStatus(400);
     return;
   }
-
-  if (categoryIndex < 0) {
-    res.sendStatus(404);
-    return;
-  }
-
-  res.locals.categoryIndex = categoryIndex;
-  res.locals.category = categories[categoryIndex];
-
-  next();
-};
-
-const resolveCategoryPutPostHandler = (req: Request, res: Response, next: NextFunction): void => {
-  const category = req.body as CategoryDto;
-
-  if (req.method === 'POST') {
-    category.id = uuid();
-  }
-
-  if (!!category.id || category.id.length !== 36) {
-    res.sendStatus(400);
-    return;
-  }
-
-  if (category.name.length < 3) {
-    res.sendStatus(409);
-    return;
-  }
-
-  res.locals.category = category;
-
-  next();
-};
-
-const resolveProductsByCategoryHandler = (req: Request, res: Response, next: NextFunction): void => {
-  const categoryId = req.params.id;
-  if (!!!categoryId || categoryId.length !== 36) {
-    console.log(categoryId, categoryId.length);
-    res.sendStatus(400);
-    return;
-  }
-
-  const productsRes: productDto[] = products.filter((p) => p.categoryId === categoryId);
-
+  const productsRes: productDto[] = await getProductsByCategoryId(categoryId);
   res.locals.products = productsRes;
-
   next();
 };
 
-categoriesRouter.get('/', (req, res) => {
-  res.send(categories);
-});
+const resolveCategoryHandler = async (req: Request, res: Response, next: NextFunction) => {
+  switch (req.method) {
+    case 'GET':
+      if (req.params.id) {
+        try {
+          if (!checkValidId(req.params.id)) {
+            res.sendStatus(400);
+            return;
+          }
+          const category = await getCategoryByIdAsync(req.params.id);
+          if (!category) {
+            res.sendStatus(404);
+            return;
+          }
+          res.locals.category = category;
+        } catch (err) {
+          next(err);
+        }
+      } else {
+        try {
+          const categories = await getCategoriesAsync();
+          res.locals.categories = categories;
+        } catch (err) {
+          next(err);
+        }
+      }
+      break;
+    case 'POST':
+      try {
+        const postCategory = req.body as CategoryDto;
+        if (!postCategory || !checkValidName(postCategory.name, 3)) {
+          res.sendStatus(400);
+          return;
+        }
+        postCategory.id = uuid();
+        CATEGORIES.push(postCategory);
+      } catch (err) {
+        next(err);
+      }
+      break;
+    case 'PUT':
+      try {
+        if (!checkValidId(req.params.id)) {
+          res.sendStatus(400);
+          return;
+        }
+        const putCategory = req.body as CategoryDto;
+        if (!putCategory || !checkValidName(putCategory.name, 3)) {
+          res.sendStatus(409);
+          return;
+        }
+        putCategory.id = req.params.id;
+        res.locals.category = await getCategoryByIdAsync(req.params.id);
+        Object.assign(res.locals.category, req.body, res.locals.category.id);
+      } catch (err) {
+        next(err);
+      }
+      break;
+    case 'DELETE':
+      try {
+        if (!checkValidId(req.params.id)) {
+          res.sendStatus(500);
+          return;
+        }
+        res.locals.categoryIndex = getCategoryIndexByIdAsync(req.params.id);
+        CATEGORIES.splice(res.locals.categoryIndex, 1);
+      } catch (err) {
+        next(err);
+      }
+      break;
+    default:
+      break;
+  }
+  next();
+};
 
-categoriesRouter.get('/:id', resolvecategoryByIdHandler, (req, res) => {
+categoriesRouter.get(
+  '/',
+  wrapAsyncAndSend(() => getCategoriesAsync()),
+);
+
+categoriesRouter.get('/:id', resolveCategoryHandler, (req, res) => {
   res.send(res.locals.category);
 });
 
@@ -76,18 +115,15 @@ categoriesRouter.get('/:id/productes', resolveProductsByCategoryHandler, (req, r
   res.send(res.locals.products);
 });
 
-categoriesRouter.post('/', resolveCategoryPutPostHandler, (req, res) => {
-  categories.push(res.locals.category);
+categoriesRouter.post('/', resolveCategoryHandler, (req, res) => {
   res.status(201).send(res.locals.category);
 });
 
-categoriesRouter.put('/:id', resolveCategoryPutPostHandler, (req, res) => {
-  Object.assign(res.locals.category, req.body, res.locals.category.id);
+categoriesRouter.put('/:id', resolveCategoryHandler, (req, res) => {
   res.status(200).send(res.locals.category);
 });
 
-categoriesRouter.delete('/:id', resolvecategoryByIdHandler, (req, res) => {
-  categories.splice(res.locals.categoryIndex, 1);
+categoriesRouter.delete('/:id', resolveCategoryHandler, (req, res) => {
   res.sendStatus(204);
 });
 
