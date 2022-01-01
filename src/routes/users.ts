@@ -2,9 +2,12 @@ import { Request, Response, NextFunction, Router } from 'express';
 import { uuid } from '../utils/uuid';
 import { UserDto } from '../assets/users';
 import { getUserByIdAsync, getUsersAsync, getUserIndexByIdAsync, getUsers } from '../store/user-store';
-import { checkValidId, checkValidName } from '../validations/common';
+import { editUserSchma, newUserSchma } from '../validations/common';
 import { wrapAsyncAndSend } from '../utils/async-routes';
+import { createLogger } from '../utils/logger';
+import { idValidator } from '../validations/common';
 
+const logger = createLogger('Users');
 const USERS: UserDto[] = getUsers();
 
 const usersRouter = Router();
@@ -14,11 +17,8 @@ const resolveUserHandler = async (req: Request, res: Response, next: NextFunctio
     case 'GET':
       if (req.params.id) {
         try {
-          if (!checkValidId(req.params.id)) {
-            res.sendStatus(400);
-            return;
-          }
-          const user = await getUserByIdAsync(req.params.id);
+          const userId = await idValidator.validateAsync(req.params.id);
+          const user = await getUserByIdAsync(userId);
           if (!user) {
             res.sendStatus(404);
             return;
@@ -38,12 +38,9 @@ const resolveUserHandler = async (req: Request, res: Response, next: NextFunctio
       break;
     case 'POST':
       try {
-        const postUser = req.body as UserDto;
-        if (!postUser || !checkValidName(postUser.name, 3)) {
-          res.sendStatus(400);
-          return;
-        }
+        const postUser = await newUserSchma.validateAsync(req.body);
         postUser.id = uuid();
+        res.locals.user = postUser;
         USERS.push(postUser);
       } catch (err) {
         next(err);
@@ -51,17 +48,8 @@ const resolveUserHandler = async (req: Request, res: Response, next: NextFunctio
       break;
     case 'PUT':
       try {
-        if (!checkValidId(req.params.id)) {
-          res.sendStatus(400);
-          return;
-        }
-        const putUser = req.body as UserDto;
-        if (!putUser || !checkValidName(putUser.name, 3)) {
-          res.sendStatus(409);
-          return;
-        }
-        putUser.id = req.params.id;
-        res.locals.user = await getUserByIdAsync(req.params.id);
+        const putUser = await editUserSchma.validateAsync(req.body);
+        res.locals.user = await getUserByIdAsync(putUser.userId);
         Object.assign(res.locals.user, putUser);
       } catch (err) {
         next(err);
@@ -69,11 +57,8 @@ const resolveUserHandler = async (req: Request, res: Response, next: NextFunctio
       break;
     case 'DELETE':
       try {
-        if (!checkValidId(req.params.id)) {
-          res.sendStatus(500);
-          return;
-        }
-        res.locals.userIndex = getUserIndexByIdAsync(req.params.id);
+        const userId = await idValidator.validateAsync(req.params.id);
+        res.locals.userIndex = getUserIndexByIdAsync(userId);
         USERS.splice(res.locals.userIndex, 1);
       } catch (err) {
         next(err);
@@ -91,26 +76,27 @@ usersRouter.get(
 );
 
 usersRouter.get('/:id', resolveUserHandler, (req, res) => {
+  logger.info(`USER ${res.locals.user.id} was Requested`);
   res.send(res.locals.user);
 });
 
 usersRouter.get('/*', (req, res) => {
-  console.log('USER was REQUESTED: ' + res.locals.id);
+  logger.info('Users Api');
 });
 
 usersRouter.post('/', resolveUserHandler, (req, res) => {
+  logger.info('User created');
   res.sendStatus(201);
-  console.log('USER created');
 });
 
 usersRouter.put('/:id', resolveUserHandler, (req, res) => {
+  logger.info(`USER ${res.locals.user.id} was changed`);
   res.status(200).send(res.locals.user);
-  console.log('USER was changed');
 });
 
 usersRouter.delete('/:id', resolveUserHandler, (req, res) => {
+  logger.info(`USER ${res.locals.user.id} was deleted`);
   res.sendStatus(204);
-  console.log('USER Deleted');
 });
 
 export { usersRouter };

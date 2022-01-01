@@ -1,10 +1,12 @@
 import { Response, Request, NextFunction, Router } from 'express';
 import { uuid } from '../utils/uuid';
 import { productDto } from '../assets/products';
-import { checkValidId, checkValidName } from '../validations/common';
+import { checkValidId, checkValidName, editProductSchma, idValidator, newProductSchma } from '../validations/common';
 import { getProductByIdAsync, getProductIndexByIdAsync, getProducts, getProductsAsync } from '../store/products-store';
 import { wrapAsyncAndSend } from '../utils/async-routes';
+import { createLogger } from '../utils/logger';
 
+const logger = createLogger('Products');
 const PRODUCTS: productDto[] = getProducts();
 const productsRouter = Router();
 
@@ -13,11 +15,8 @@ const resolveProductHandler = async (req: Request, res: Response, next: NextFunc
     case 'GET':
       if (req.params.id) {
         try {
-          if (!checkValidId(req.params.id)) {
-            res.sendStatus(400);
-            return;
-          }
-          const product = await getProductByIdAsync(req.params.id);
+          const productId = await idValidator.validateAsync(req.params.id);
+          const product = await getProductByIdAsync(productId);
           if (!product) {
             res.sendStatus(404);
             return;
@@ -37,12 +36,9 @@ const resolveProductHandler = async (req: Request, res: Response, next: NextFunc
       break;
     case 'POST':
       try {
-        const postProduct = req.body as productDto;
-        if (!postProduct || !checkValidName(postProduct.name, 3)) {
-          res.sendStatus(400);
-          return;
-        }
+        const postProduct = await newProductSchma.validateAsync(req.body);
         postProduct.id = uuid();
+        res.locals.product = postProduct;
         PRODUCTS.push(postProduct);
       } catch (err) {
         next(err);
@@ -50,17 +46,8 @@ const resolveProductHandler = async (req: Request, res: Response, next: NextFunc
       break;
     case 'PUT':
       try {
-        if (!checkValidId(req.params.id)) {
-          res.sendStatus(400);
-          return;
-        }
-        const putProduct = req.body as productDto;
-        if (!putProduct || !checkValidName(putProduct.name, 3)) {
-          res.sendStatus(409);
-          return;
-        }
-        putProduct.id = req.params.id;
-        res.locals.product = await getProductByIdAsync(req.params.id);
+        const putProduct = await editProductSchma.validateAsync(req.body);
+        res.locals.product = await getProductByIdAsync(putProduct.id);
         Object.assign(res.locals.product, req.body, res.locals.product.id);
       } catch (err) {
         next(err);
@@ -68,11 +55,9 @@ const resolveProductHandler = async (req: Request, res: Response, next: NextFunc
       break;
     case 'DELETE':
       try {
-        if (!checkValidId(req.params.id)) {
-          res.sendStatus(500);
-          return;
-        }
-        res.locals.productIndex = getProductIndexByIdAsync(req.params.id);
+        const productId = await idValidator.validateAsync(req.params.id);
+        res.locals.productIndex = getProductIndexByIdAsync(productId);
+        res.locals.product = PRODUCTS[res.locals.productIndex];
         PRODUCTS.splice(res.locals.productIndex, 1);
       } catch (err) {
         next(err);
@@ -90,18 +75,22 @@ productsRouter.get(
 );
 
 productsRouter.get('/:id', resolveProductHandler, (req, res) => {
+  logger.info(`Product ${res.locals.product.id} was Requested`);
   res.send(res.locals.product);
 });
 
 productsRouter.post('/', resolveProductHandler, (req, res) => {
+  logger.info(`Product ${res.locals.product.id} was created`);
   res.status(201).send(res.locals.product);
 });
 
 productsRouter.put('/:id', resolveProductHandler, (req, res) => {
+  logger.info(`Product ${res.locals.product.id} was updated`);
   res.status(200).send(res.locals.product);
 });
 
 productsRouter.delete('/:id', resolveProductHandler, (req, res) => {
+  logger.info(`Product ${res.locals.product.id} was deleted`);
   res.sendStatus(204);
 });
 

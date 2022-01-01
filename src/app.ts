@@ -3,22 +3,23 @@ import cors from 'cors';
 import { usersRouter } from './routes/users';
 import { productsRouter } from './routes/products';
 import { categoriesRouter } from './routes/categories';
-import { loggerOptions } from './middlelware/request-log';
 import { AuthBailOut } from './middlelware/auth';
-import expresswinston from 'express-winston';
+import { errorLogger, traceLogger } from './utils/logger';
+import path from 'path';
 
 const app = express();
 app.use(express.json());
 app.use(cors());
 
-app.use(expresswinston.logger(loggerOptions()));
+app.use(traceLogger());
+
+app.use('/assets', express.static(path.join(__dirname, 'public')));
 
 app.use('/api/users', usersRouter);
 app.use('/api/products', productsRouter);
 app.use('/api/categories', categoriesRouter);
 
 app.use(AuthBailOut);
-
-app.use(expresswinston.errorLogger(loggerOptions()));
+app.use(errorLogger());
 
 export { app };

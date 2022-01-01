@@ -9,7 +9,7 @@ import {
   getCategoryIndexByIdAsync,
   getProductsByCategoryId,
 } from '../store/category-store';
-import { checkValidId, checkValidName } from '../validations/common';
+import { checkValidId, checkValidName, editCategorySchma, idValidator, newCategorySchma } from '../validations/common';
 import { productDto } from '../assets/products';
 
 const CATEGORIES: CategoryDto[] = getCategories();
@@ -31,11 +31,8 @@ const resolveCategoryHandler = async (req: Request, res: Response, next: NextFun
     case 'GET':
       if (req.params.id) {
         try {
-          if (!checkValidId(req.params.id)) {
-            res.sendStatus(400);
-            return;
-          }
-          const category = await getCategoryByIdAsync(req.params.id);
+          const categoryId = await idValidator.validateAsync(req.params.id);
+          const category = await getCategoryByIdAsync(categoryId);
           if (!category) {
             res.sendStatus(404);
             return;
@@ -55,12 +52,9 @@ const resolveCategoryHandler = async (req: Request, res: Response, next: NextFun
       break;
     case 'POST':
       try {
-        const postCategory = req.body as CategoryDto;
-        if (!postCategory || !checkValidName(postCategory.name, 3)) {
-          res.sendStatus(400);
-          return;
-        }
+        const postCategory = await newCategorySchma.validateAsync(req.body);
         postCategory.id = uuid();
+        res.locals.category = postCategory;
         CATEGORIES.push(postCategory);
       } catch (err) {
         next(err);
@@ -68,17 +62,8 @@ const resolveCategoryHandler = async (req: Request, res: Response, next: NextFun
       break;
     case 'PUT':
       try {
-        if (!checkValidId(req.params.id)) {
-          res.sendStatus(400);
-          return;
-        }
-        const putCategory = req.body as CategoryDto;
-        if (!putCategory || !checkValidName(putCategory.name, 3)) {
-          res.sendStatus(409);
-          return;
-        }
-        putCategory.id = req.params.id;
-        res.locals.category = await getCategoryByIdAsync(req.params.id);
+        const putCategory = await editCategorySchma.validateAsync(req.body);
+        res.locals.category = await getCategoryByIdAsync(putCategory.id);
         Object.assign(res.locals.category, req.body, res.locals.category.id);
       } catch (err) {
         next(err);
@@ -86,11 +71,8 @@ const resolveCategoryHandler = async (req: Request, res: Response, next: NextFun
       break;
     case 'DELETE':
       try {
-        if (!checkValidId(req.params.id)) {
-          res.sendStatus(500);
-          return;
-        }
-        res.locals.categoryIndex = getCategoryIndexByIdAsync(req.params.id);
+        const categoryId = await idValidator.validateAsync(req.params.id);
+        res.locals.categoryIndex = await getCategoryIndexByIdAsync(categoryId);
         CATEGORIES.splice(res.locals.categoryIndex, 1);
       } catch (err) {
         next(err);
